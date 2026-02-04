@@ -1,7 +1,5 @@
-
 import { useState } from 'react'
 import { ConfigPanel } from './components/ConfigPanel'
-import { ScheduleEditor } from './components/ScheduleEditor'
 import { ResultsDashboard } from './components/ResultsDashboard'
 import type { SimulationConfig, SimulationResult } from './types'
 import { runSimulation } from './utils/simulation'
@@ -9,9 +7,7 @@ import { runSimulation } from './utils/simulation'
 const DEFAULT_CONFIG: SimulationConfig = {
   year: 2026,
   startDate: "2026-04-01",
-  endDate: "2026-07-31", // User requested end of July
-  totalStudents: 100,
-  requiredHoursPerStudent: 21,
+  endDate: "2026-07-31",
   maxConcurrentStudents: 5,
   minSessionHours: 2,
   maxSessionHours: 5,
@@ -20,10 +16,19 @@ const DEFAULT_CONFIG: SimulationConfig = {
     weekdays: { start: "08:30", end: "20:30" },
     saturday: { start: "09:30", end: "16:00" }
   },
-  openDays: [1, 2, 3, 4, 5, 6], // Mon-Sat (0=Sun)
+  openDays: [1, 2, 3, 4, 5, 6], // Mon-Sat
   closedDays: [],
-  blockedClassTimes: [],
-  attendanceVariance: false // Default to off
+  attendanceVariance: false,
+  groups: [
+    {
+      id: 'g1',
+      name: '標準クラス (Standard)',
+      count: 100,
+      requiredHours: 21,
+      blockedClassTimes: [],
+      color: '#3b82f6'
+    }
+  ]
 }
 
 function App() {
@@ -88,10 +93,6 @@ function App() {
             <ConfigPanel
               config={config}
               onChange={setConfig}
-            />
-            <ScheduleEditor
-              blockedTimes={config.blockedClassTimes}
-              onChange={(newBlocked) => setConfig({ ...config, blockedClassTimes: newBlocked })}
             />
           </div>
 

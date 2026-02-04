@@ -44,6 +44,9 @@ const isBlocked = (
     blockedTimes: BlockedTime[],
     bufferMinutes: number = 0
 ): boolean => {
+    // If no blocks, return false immediately
+    if (!blockedTimes || blockedTimes.length === 0) return false;
+
     const dayBlocks = blockedTimes.filter(b => b.dayOfWeek === dayOfWeekStr);
 
     for (const block of dayBlocks) {
@@ -67,14 +70,24 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
 
     const allDays = eachDayOfInterval({ start: startDate, end: endDate });
 
-    // Initialize students
-    const students: StudentProgress[] = Array.from({ length: config.totalStudents }, (_, i) => ({
-        studentId: i + 1,
-        completedHours: 0,
-        bookingProbability: config.attendanceVariance ? 0.3 + (Math.random() * 0.7) : 1.0, // 30% - 100% chance
-        daysTaken: 0,
-        sessions: []
-    }));
+    // Initialize students from ALL groups
+    let globalStudentId = 1;
+    const students: StudentProgress[] = [];
+
+    config.groups.forEach(group => {
+        for (let i = 0; i < group.count; i++) {
+            students.push({
+                studentId: globalStudentId++,
+                groupId: group.id,
+                completedHours: 0,
+                bookingProbability: config.attendanceVariance ? 0.3 + (Math.random() * 0.7) : 1.0,
+                daysTaken: 0,
+                sessions: []
+            });
+        }
+    });
+
+    const totalStudentsCount = students.length;
 
     // Global availability map
     const dailyCapacity: Record<string, number[]> = {};
@@ -89,115 +102,118 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
     // Helper: format YYYY-MM-DD
     const formatDate = (date: Date) => format(date, 'yyyy-MM-dd');
 
-    // Pre-calculate theoretical maximum capacity hours
+    // Pre-calculate statistics
     let totalMaxCapacityMinutes = 0;
-    const requiredTotalMinutes = config.totalStudents * config.requiredHoursPerStudent * 60;
+    const requiredTotalMinutes = config.groups.reduce((sum, g) => sum + (g.count * g.requiredHours * 60), 0);
 
     for (const day of allDays) {
         const dayStr = formatDate(day);
         const dayOfWeek = getDay(day);
 
-        // Check Open Days
         if (!config.openDays.includes(dayOfWeek)) continue;
-
-        // Check Closed Dates (Holidays)
         if (config.closedDays.includes(dayStr)) continue;
 
         const hours = dayOfWeek === 6 ? config.clinicHours.saturday : config.clinicHours.weekdays;
         const openMin = timeToMinutes(hours.start);
         const closeMin = timeToMinutes(hours.end);
+        const totalOpen = Math.max(0, closeMin - openMin);
 
-        const totalOpen = closeMin - openMin;
-
-        // Subtract blocked class times (Estimated)
-        let dailyBlockedMinutes = 0;
-        config.blockedClassTimes
-            .filter(b => b.dayOfWeek === DAY_MAP[dayOfWeek])
-            .forEach(b => {
-                const p = CLASS_PERIODS.find(cp => cp.period === b.period);
-                if (p) {
-                    const start = timeToMinutes(p.startTime) - config.classBufferMinutes;
-                    const end = timeToMinutes(p.endTime) + config.classBufferMinutes;
-                    // Clip to clinic hours
-                    const effectiveStart = Math.max(openMin, start);
-                    const effectiveEnd = Math.min(closeMin, end);
-                    if (effectiveEnd > effectiveStart) {
-                        dailyBlockedMinutes += (effectiveEnd - effectiveStart);
-                    }
-                }
-            });
-
-        const availableMinutes = Math.max(0, totalOpen - dailyBlockedMinutes);
-        totalMaxCapacityMinutes += (availableMinutes * config.maxConcurrentStudents);
+        // Optimistic upper bound: Full Clinic Hours * Max Concurrent
+        totalMaxCapacityMinutes += (totalOpen * config.maxConcurrentStudents);
     }
 
     // Completion Rate (Percentage)
-    const completionRate = Math.round((totalMaxCapacityMinutes / requiredTotalMinutes) * 100);
+    const completionRate = requiredTotalMinutes > 0
+        ? Math.round((totalMaxCapacityMinutes / requiredTotalMinutes) * 100)
+        : 0;
 
     // Simulation Loop
     let completedCount = 0;
     let finalDate: string | null = null;
     const messages: string[] = [];
 
+    // Helper: Get Group Config
+    const getGroup = (id: string) => config.groups.find(g => g.id === id);
+
     for (const day of allDays) {
-        if (completedCount >= config.totalStudents) {
+        if (completedCount >= totalStudentsCount) {
             finalDate = format(day, 'yyyy-MM-dd');
             break;
         }
 
-        const dayOfWeek = getDay(day); // 0=Sun, 6=Sat
+        const dayOfWeek = getDay(day);
         const dayStr = format(day, 'yyyy-MM-dd');
 
-        // VALIDATION: Open Days
         if (!config.openDays.includes(dayOfWeek)) continue;
-
-        // VALIDATION: Closed Dates
         if (config.closedDays.includes(dayStr)) continue;
 
         const dayOfWeekStr = DAY_MAP[dayOfWeek] as any;
 
-        // Determine clinic hours for today
         const hours = dayOfWeek === 6 ? config.clinicHours.saturday : config.clinicHours.weekdays;
         const openMin = timeToMinutes(hours.start);
         const closeMin = timeToMinutes(hours.end);
 
-        // Shuffle students
-        const activeStudents = students.filter(s => s.completedHours < config.requiredHoursPerStudent);
-        activeStudents.sort(() => Math.random() - 0.5);
+        // Filter active students
+        const activeStudents = students.filter(s => {
+            const g = getGroup(s.groupId);
+            return g && s.completedHours < g.requiredHours;
+        });
+
+        // SORTING STRATEGY (Deterministic vs Random)
+        if (config.attendanceVariance) {
+            // Random shuffle if variance is ON (User wants variability)
+            activeStudents.sort(() => Math.random() - 0.5);
+        } else {
+            // Deterministic: Prioritize students with LEAST completed hours.
+            // This balances the load and ensures fairness without randomness.
+            // Secondary sort by ID for stability.
+            activeStudents.sort((a, b) => {
+                const diff = a.completedHours - b.completedHours;
+                if (Math.abs(diff) > 0.1) return diff; // Float safety
+                return a.studentId - b.studentId;
+            });
+        }
 
         for (const student of activeStudents) {
-            if (student.completedHours >= config.requiredHoursPerStudent) continue;
+            const group = getGroup(student.groupId);
+            if (!group) continue;
 
-            // VARIANCE CHECK: Skip based on probability if variance is enabled
-            if (Math.random() > student.bookingProbability) continue;
+            // VARIANCE CHECK
+            if (config.attendanceVariance) {
+                if (Math.random() > student.bookingProbability) continue;
+            }
 
             // Calculate remaining minutes needed
-            const remainingMinutes = (config.requiredHoursPerStudent * 60) - (student.completedHours * 60);
+            const remainingMinutes = (group.requiredHours * 60) - (student.completedHours * 60);
 
-            // If remaining time is very small (e.g. < 5 mins due to float precision), just finish.
             if (remainingMinutes < 5) {
-                student.completedHours = config.requiredHoursPerStudent;
+                student.completedHours = group.requiredHours;
                 break;
             }
 
+            // Try to find a slot
             for (let start = openMin; start <= closeMin - (config.minSessionHours * 60); start += 10) {
                 let maxDuration = 0;
 
                 for (let d = 10; d <= config.maxSessionHours * 60; d += 10) {
-                    // Cap duration at remaining minutes needed
+                    // 1. Cap duration at remaining minutes needed
                     if (d > remainingMinutes) break;
 
                     const currentEnd = start + d;
-
+                    // 2. Check global end time
                     if (currentEnd > closeMin) break;
 
-                    if (isBlocked(dayOfWeekStr, currentEnd - 10, currentEnd, config.blockedClassTimes, config.classBufferMinutes)) {
+                    // 3. Check Group-Specific Blocks
+                    if (isBlocked(dayOfWeekStr, currentEnd - 10, currentEnd, group.blockedClassTimes, config.classBufferMinutes)) {
                         break;
                     }
 
-                    // Capacity Check
+                    // 4. Capacity Check (Global)
                     let capacityOk = true;
-                    // Check specific 10m slot
+                    // Check logic: We strictly enforce maxConcurrent for *every 10m slice* of the potential session.
+                    // Ideally we check the whole range, but checking the *newest slice* (currentEnd) is the iterative way here.
+                    // Wait, `maxDuration` grows. If `d=10` is valid, we check `d=20`.
+                    // We must ensure the NEW slice (start+d-10 to start+d) is valid.
                     const slotIdx = Math.floor((currentEnd - 10) / 10);
                     const currentCapacity = getDayCapacity(dayStr)[slotIdx] || 0;
                     if (currentCapacity >= config.maxConcurrentStudents) {
@@ -209,12 +225,15 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
                     maxDuration = d;
                 }
 
+                // Check constraints for session validity
+
                 // For the last session, we allow it to be shorter than minSessionHours if strictly needed to finish
+                const isFinalSession = maxDuration >= remainingMinutes - 5;
                 // Otherwise enforce minSessionHours
-                const isLastSession = maxDuration >= remainingMinutes - 5; // tolerance
                 const respectsMinDur = maxDuration >= config.minSessionHours * 60;
 
-                if (maxDuration > 0 && (respectsMinDur || isLastSession)) {
+                if (maxDuration > 0 && (respectsMinDur || isFinalSession)) {
+                    // BOOK IT
                     const sessionEnd = start + maxDuration;
 
                     student.sessions.push({
@@ -226,6 +245,7 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
                     student.completedHours += maxDuration / 60;
                     student.daysTaken++;
 
+                    // Mark capacity
                     const dayCap = getDayCapacity(dayStr);
                     const startSlot = Math.floor(start / 10);
                     const endSlot = Math.floor(sessionEnd / 10);
@@ -234,15 +254,23 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
                         if (dayCap[i] === undefined) dayCap[i] = 0;
                         dayCap[i]++;
                     }
+
+                    // ONE SESSION PER DAY IS ENFORCED BY BREAKING HERE
+                    // The student loop moves to the next student immediately.
                     break;
                 }
             }
         }
-        completedCount = students.filter(s => s.completedHours >= config.requiredHoursPerStudent).length;
+
+        // Recalculate completion
+        completedCount = students.filter(s => {
+            const g = getGroup(s.groupId);
+            return g && s.completedHours >= g.requiredHours;
+        }).length;
     }
 
     return {
-        success: completedCount === config.totalStudents,
+        success: completedCount === totalStudentsCount,
         completionDate: finalDate,
         completionRate: completionRate,
         totalDays: allDays.length,

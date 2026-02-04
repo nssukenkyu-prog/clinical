@@ -21,25 +21,38 @@ export interface ClinicHours {
     saturday: TimeSlot;
 }
 
+export interface StudentGroup {
+    id: string;
+    name: string;
+    description?: string; // e.g. "3rd Grade"
+    count: number;
+    requiredHours: number;
+    blockedClassTimes: BlockedTime[];
+    color: string; // Hex code for graphs
+}
+
 export interface SimulationConfig {
     year: number;
     startDate: string; // YYYY-MM-DD
     endDate: string;   // YYYY-MM-DD
-    totalStudents: number;
-    requiredHoursPerStudent: number;
+
+    // Global Constraints
     maxConcurrentStudents: number;
     minSessionHours: number;
     maxSessionHours: number;
-    classBufferMinutes: number; // Buffer before/after class in minutes
+    classBufferMinutes: number;
     clinicHours: ClinicHours;
-    blockedClassTimes: BlockedTime[];
-    openDays: number[]; // 0=Sun, 1=Mon, ..., 6=Sat
+    openDays: number[]; // 0=Sun
     closedDays: string[]; // YYYY-MM-DD
-    attendanceVariance: boolean; // Simulates random student behavior
+    attendanceVariance: boolean;
+
+    // Groups (Replaces totalStudents / blockedClassTimes / requiredHoursPerStudent)
+    groups: StudentGroup[];
 }
 
 export interface StudentProgress {
     studentId: number;
+    groupId: string; // New
     completedHours: number;
     bookingProbability: number; // 0.0 - 1.0 (New)
     daysTaken: number; // Count of unique days attended (New)
