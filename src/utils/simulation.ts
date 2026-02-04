@@ -171,10 +171,22 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
             // VARIANCE CHECK: Skip based on probability if variance is enabled
             if (Math.random() > student.bookingProbability) continue;
 
+            // Calculate remaining minutes needed
+            const remainingMinutes = (config.requiredHoursPerStudent * 60) - (student.completedHours * 60);
+
+            // If remaining time is very small (e.g. < 5 mins due to float precision), just finish.
+            if (remainingMinutes < 5) {
+                student.completedHours = config.requiredHoursPerStudent;
+                break;
+            }
+
             for (let start = openMin; start <= closeMin - (config.minSessionHours * 60); start += 10) {
                 let maxDuration = 0;
 
                 for (let d = 10; d <= config.maxSessionHours * 60; d += 10) {
+                    // Cap duration at remaining minutes needed
+                    if (d > remainingMinutes) break;
+
                     const currentEnd = start + d;
 
                     if (currentEnd > closeMin) break;
@@ -197,7 +209,12 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
                     maxDuration = d;
                 }
 
-                if (maxDuration >= config.minSessionHours * 60) {
+                // For the last session, we allow it to be shorter than minSessionHours if strictly needed to finish
+                // Otherwise enforce minSessionHours
+                const isLastSession = maxDuration >= remainingMinutes - 5; // tolerance
+                const respectsMinDur = maxDuration >= config.minSessionHours * 60;
+
+                if (maxDuration > 0 && (respectsMinDur || isLastSession)) {
                     const sessionEnd = start + maxDuration;
 
                     student.sessions.push({

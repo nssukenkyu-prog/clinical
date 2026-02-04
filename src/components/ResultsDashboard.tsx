@@ -162,25 +162,62 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ result, isSi
                     </div>
                 </div>
 
-                {/* Sample Gantt / Schedule (First 5 Students) */}
+                {/* Daily Utilization Rate Chart (Detailed Feasibility) */}
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-                    <h3 className="text-lg font-semibold mb-4 text-gray-800 dark:text-white">サンプル受講スケジュール (最初の5名)</h3>
-                    <div className="space-y-3 max-h-64 overflow-y-auto">
-                        {result.studentResults.slice(0, 5).map(student => (
-                            <div key={student.studentId} className="flex flex-col gap-1 border-b border-gray-100 dark:border-gray-700 pb-2">
-                                <div className="flex justify-between text-xs font-bold text-gray-500">
-                                    <span>Student #{student.studentId}</span>
-                                    <span>{student.daysTaken} days / {student.completedHours.toFixed(1)}h</span>
-                                </div>
-                                <div className="flex flex-wrap gap-1">
-                                    {student.sessions.map((session, idx) => (
-                                        <div key={idx} className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-[10px] rounded">
-                                            {session.date.slice(5)}
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        ))}
+                    <h3 className="text-lg font-semibold mb-4 text-gray-800 dark:text-white">日別稼働率 (Daily Utilization Rate)</h3>
+                    <p className="text-xs text-gray-500 mb-2">定員に対する予約の埋まり具合 (100% = 満員)</p>
+                    <div className="h-64 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={chartData}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
+                                <XAxis dataKey="date" stroke="#9ca3af" fontSize={10} tickLine={false} minTickGap={20} />
+                                <YAxis stroke="#9ca3af" fontSize={12} tickLine={false} domain={[0, 100]} unit="%" />
+                                <Tooltip contentStyle={{ backgroundColor: '#1f2937', color: '#fff' }} />
+                                <Area
+                                    type="monotone"
+                                    dataKey="usagePercent"
+                                    stroke="#10b981"
+                                    fill="#10b981"
+                                    fillOpacity={0.2}
+                                    name="Utilization %"
+                                />
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+
+                {/* All 100 Students Schedule View */}
+                <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 lg:col-span-2">
+                    <h3 className="text-lg font-semibold mb-4 text-gray-800 dark:text-white">全学生スケジュール一覧 (All Students)</h3>
+                    <div className="max-h-96 overflow-y-auto border border-gray-100 dark:border-gray-700 rounded-lg">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-gray-50 dark:bg-gray-900 sticky top-0 z-10">
+                                <tr>
+                                    <th className="p-3 font-medium text-gray-500">ID</th>
+                                    <th className="p-3 font-medium text-gray-500">Hours</th>
+                                    <th className="p-3 font-medium text-gray-500">Days</th>
+                                    <th className="p-3 font-medium text-gray-500">Schedule</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                                {result.studentResults.map(student => (
+                                    <tr key={student.studentId} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                                        <td className="p-3 font-mono text-gray-400">#{student.studentId}</td>
+                                        <td className="p-3 font-bold">{student.completedHours.toFixed(1)}h</td>
+                                        <td className="p-3">{student.daysTaken} days</td>
+                                        <td className="p-3">
+                                            <div className="flex flex-wrap gap-1">
+                                                {student.sessions.map((session, idx) => (
+                                                    <span key={idx} className="px-1.5 py-0.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-[10px] rounded border border-blue-100 dark:border-blue-800/50">
+                                                        {session.date.slice(5)} ({session.start}-{session.end})
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
