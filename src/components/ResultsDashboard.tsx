@@ -5,9 +5,10 @@ import type { SimulationResult } from '../types';
 interface ResultsDashboardProps {
     result: SimulationResult | null;
     isSimulating: boolean;
+    limit: number; // Max concurrent students limit
 }
 
-export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ result, isSimulating }) => {
+export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ result, isSimulating, limit }) => {
     if (isSimulating) {
         return (
             <div className="h-96 flex items-center justify-center bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
@@ -23,7 +24,6 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ result, isSi
 
     const chartData = useMemo(() => {
         // Transform dailyUsage to chart format
-        // Aggregation: Max concurrent students per day
         const data = [];
         const dates = Object.keys(result.dailyUsage).sort();
 
@@ -33,11 +33,12 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ result, isSi
             data.push({
                 date: date.slice(5), // MM-DD
                 maxConcurrent,
-                slots: slots.reduce((a, b) => a + b, 0) // total slot-minutes (proxy for load)
+                limit,
+                usagePercent: Math.round((maxConcurrent / limit) * 100)
             });
         }
         return data;
-    }, [result]);
+    }, [result, limit]);
 
     return (
         <div className="space-y-6">
@@ -63,6 +64,27 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ result, isSi
                         {result.totalDays} <span className="text-sm font-normal text-gray-400">日間</span>
                     </p>
                 </div>
+
+                <div className="p-6 bg-white dark:bg-gray-800 rounded-xl border-l-4 border-yellow-500 shadow-lg md:col-span-3 lg:col-span-1">
+                    <h4 className="text-sm uppercase text-gray-500 font-bold mb-1">達成可能率 (Feasibility Rate)</h4>
+                    <div className="flex items-end gap-2">
+                        <p className={`text-3xl font-bold ${result.completionRate >= 100 ? 'text-green-600' : 'text-red-600'}`}>
+                            {result.completionRate}%
+                        </p>
+                        <span className="text-xs text-gray-500 mb-1">
+                            (理論上の最大収容可能人数 / 必要人数)
+                        </span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2.5 mt-2 dark:bg-gray-700">
+                        <div
+                            className={`h-2.5 rounded-full ${result.completionRate >= 100 ? 'bg-green-600' : 'bg-red-600'}`}
+                            style={{ width: `${Math.min(result.completionRate, 100)}%` }}
+                        ></div>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-2">
+                        100%未満は物理的に不可能です。120%以上を推奨します。
+                    </p>
+                </div>
             </div>
 
             {/* Charts */}
@@ -79,9 +101,24 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ result, isSi
                             </defs>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#374151" opacity={0.3} />
                             <XAxis dataKey="date" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} minTickGap={30} />
-                            <YAxis stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} domain={[0, 'auto']} />
+                            <YAxis
+                                stroke="#9ca3af"
+                                fontSize={12}
+                                tickLine={false}
+                                axisLine={false}
+                                domain={[0, limit + 1]} // Dynamic domain based on limit
+                            />
                             <Tooltip
                                 contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#f3f4f6' }}
+                            />
+                            {/* Capacity Limit Line */}
+                            <Area
+                                type="monotone"
+                                dataKey="limit"
+                                stroke="transparent"
+                                fill="#ef4444"
+                                fillOpacity={0.05} // Subtle red background for capacity
+                                isAnimationActive={false}
                             />
                             <Area
                                 type="monotone"

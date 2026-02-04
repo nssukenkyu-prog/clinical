@@ -30,8 +30,11 @@ export interface SimulationConfig {
     maxConcurrentStudents: number;
     minSessionHours: number;
     maxSessionHours: number;
+    classBufferMinutes: number; // Buffer before/after class in minutes
     clinicHours: ClinicHours;
     blockedClassTimes: BlockedTime[];
+    openDays: number[]; // 0=Sun, 1=Mon, ..., 6=Sat
+    closedDays: string[]; // YYYY-MM-DD
 }
 
 export interface StudentProgress {
@@ -48,6 +51,7 @@ export interface StudentProgress {
 export interface SimulationResult {
     success: boolean;
     completionDate: string | null;
+    completionRate: number; // Percentage (Available Capacity / Required)
     totalDays: number;
     studentResults: StudentProgress[];
     dailyUsage: Record<string, number[]>; // map of date string to array of student counts per 10min slot

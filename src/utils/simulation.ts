@@ -41,7 +41,8 @@ const isBlocked = (
     dayOfWeekStr: string,
     startMin: number,
     endMin: number,
-    blockedTimes: BlockedTime[]
+    blockedTimes: BlockedTime[],
+    bufferMinutes: number = 0
 ): boolean => {
     const dayBlocks = blockedTimes.filter(b => b.dayOfWeek === dayOfWeekStr);
 
@@ -49,8 +50,13 @@ const isBlocked = (
         const period = CLASS_PERIODS.find(p => p.period === block.period);
         if (!period) continue;
 
-        const blockStart = timeToMinutes(period.startTime);
-        const blockEnd = timeToMinutes(period.endTime);
+        // Apply buffer: Class effectively starts earlier and ends later for the purpose of conflict
+        // e.g. Class 10:00-11:00. Buffer 10.
+        // Effective Block: 09:50 - 11:10.
+        // If training wants to end at 09:55, it overlaps with 09:50. -> Blocked. Correct (need 10m before).
+        // If training wants to start at 11:05, it overlaps with 11:10. -> Blocked. Correct (need 10m after).
+        const blockStart = timeToMinutes(period.startTime) - bufferMinutes;
+        const blockEnd = timeToMinutes(period.endTime) + bufferMinutes;
 
         // Check overlap
         if (startMin < blockEnd && endMin > blockStart) {
@@ -73,12 +79,7 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
         sessions: []
     }));
 
-    // Global availability map: date string -> array of 144 (10-min slots for 24h) representing current student count
-    // 08:30 is slot 51 (8*6 + 3 = 51)
-    // Actually let's just use minute-arrays or a more sparse structure if needed. 
-    // Given 100 students and 1 year, a dense map is fine. 
-    // 144 slots * 365 days is small.
-    // We only track "clinic open hours" really.
+    // Global availability map
     const dailyCapacity: Record<string, number[]> = {};
 
     const getDayCapacity = (dateStr: string) => {
@@ -89,11 +90,55 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
         return dailyCapacity[dateStr];
     };
 
-    // Simulation Loop
-    // Strategy: For each day, try to schedule students who haven't finished.
-    // Optimization: Round Robin or First-Come-First-Served?
-    // Realistically, students sign up. FCFS per day is reasonable simulation.
+    // Helper: format YYYY-MM-DD
+    const formatDate = (date: Date) => format(date, 'yyyy-MM-dd');
 
+    // Pre-calculate theoretical maximum capacity hours
+    let totalMaxCapacityMinutes = 0;
+    const requiredTotalMinutes = config.totalStudents * config.requiredHoursPerStudent * 60;
+
+    for (const day of allDays) {
+        const dayStr = formatDate(day);
+        const dayOfWeek = getDay(day);
+
+        // Check Open Days
+        if (!config.openDays.includes(dayOfWeek)) continue;
+
+        // Check Closed Dates (Holidays)
+        if (config.closedDays.includes(dayStr)) continue;
+
+        const hours = dayOfWeek === 6 ? config.clinicHours.saturday : config.clinicHours.weekdays;
+        const openMin = timeToMinutes(hours.start);
+        const closeMin = timeToMinutes(hours.end);
+
+        const totalOpen = closeMin - openMin;
+
+        // Subtract blocked class times (Estimated)
+        let dailyBlockedMinutes = 0;
+        config.blockedClassTimes
+            .filter(b => b.dayOfWeek === DAY_MAP[dayOfWeek])
+            .forEach(b => {
+                const p = CLASS_PERIODS.find(cp => cp.period === b.period);
+                if (p) {
+                    const start = timeToMinutes(p.startTime) - config.classBufferMinutes;
+                    const end = timeToMinutes(p.endTime) + config.classBufferMinutes;
+                    // Clip to clinic hours
+                    const effectiveStart = Math.max(openMin, start);
+                    const effectiveEnd = Math.min(closeMin, end);
+                    if (effectiveEnd > effectiveStart) {
+                        dailyBlockedMinutes += (effectiveEnd - effectiveStart);
+                    }
+                }
+            });
+
+        const availableMinutes = Math.max(0, totalOpen - dailyBlockedMinutes);
+        totalMaxCapacityMinutes += (availableMinutes * config.maxConcurrentStudents);
+    }
+
+    // Completion Rate: (Capacity / Required) * 100
+    const completionRate = Math.round((totalMaxCapacityMinutes / requiredTotalMinutes) * 100);
+
+    // Simulation Loop
     let completedCount = 0;
     let finalDate: string | null = null;
     const messages: string[] = [];
@@ -105,9 +150,14 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
         }
 
         const dayOfWeek = getDay(day); // 0=Sun, 6=Sat
-        if (dayOfWeek === 0) continue; // Sunday closed (assumed based on prompt saying "Sat open", implied Sun closed or not mentioned. Prompt says Sat 09:30-16:00, Weekdays 08:30-20:30)
-
         const dayStr = format(day, 'yyyy-MM-dd');
+
+        // VALIDATION: Open Days
+        if (!config.openDays.includes(dayOfWeek)) continue;
+
+        // VALIDATION: Closed Dates
+        if (config.closedDays.includes(dayStr)) continue;
+
         const dayOfWeekStr = DAY_MAP[dayOfWeek] as any;
 
         // Determine clinic hours for today
@@ -115,58 +165,29 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
         const openMin = timeToMinutes(hours.start);
         const closeMin = timeToMinutes(hours.end);
 
-        // Shuffle students to simulate random booking order each day
-        // Or iterate sequentially to ensure fairness? Let's shuffle.
+        // Shuffle students
         const activeStudents = students.filter(s => s.completedHours < config.requiredHoursPerStudent);
-        // Simple shuffle
         activeStudents.sort(() => Math.random() - 0.5);
 
         for (const student of activeStudents) {
             if (student.completedHours >= config.requiredHoursPerStudent) continue;
 
-            // Try to find a slot
-            // Valid durations: 2h (120m) to 5h (300m)
-            // Check for blocked class times
-
-            // We want to maximize session length? Or just find *any* valid slot?
-            // Greedy approach: Find earliest possible start time, then extend as long as possible up to 5h.
-
-            // Iterate through day in 10-min steps
             for (let start = openMin; start <= closeMin - (config.minSessionHours * 60); start += 10) {
-                // Potential start found.
-                // Check if student has class at this start time (should verify "during session" too)
-
-                // Let's define the max possible duration from this start point
                 let maxDuration = 0;
 
-                // Scan ahead minute by minute (or 10m blocks)
                 for (let d = 10; d <= config.maxSessionHours * 60; d += 10) {
                     const currentEnd = start + d;
 
-                    // 1. Check clinic closing
                     if (currentEnd > closeMin) break;
 
-                    // 2. Check student class blocks (only for the new 10m chunk added)
-                    // We check the interval [currentEnd-10, currentEnd]
-                    if (isBlocked(dayOfWeekStr, currentEnd - 10, currentEnd, config.blockedClassTimes)) {
+                    if (isBlocked(dayOfWeekStr, currentEnd - 10, currentEnd, config.blockedClassTimes, config.classBufferMinutes)) {
                         break;
                     }
 
-                    // 3. Check Clinic Capacity
-                    // We need to check if *adding* this student would exceed capacity in this interval
-                    // But we first need to see if we CAN schedule.
-                    // Capacity check is tricky because other students are already booked.
-                    // We need to check the `dailyCapacity` array.
-                    // We'll update capacity AFTER committing. 
-                    // So here we temporarily check.
+                    // Capacity Check
                     let capacityOk = true;
                     // Check specific 10m slot
-                    // Assuming 10m resolution for capacity array index:
                     const slotIdx = Math.floor((currentEnd - 10) / 10);
-                    // Note: date-fns `getDay` returns 0-6. 
-                    // We need to be careful with indexing. 
-                    // 144 slots. 00:00 -> idx 0. 00:10 -> idx 1.
-
                     const currentCapacity = getDayCapacity(dayStr)[slotIdx] || 0;
                     if (currentCapacity >= config.maxConcurrentStudents) {
                         capacityOk = false;
@@ -174,16 +195,12 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
 
                     if (!capacityOk) break;
 
-                    // If all good, this duration is valid so far
                     maxDuration = d;
                 }
 
-                // If we found a valid duration >= minSessionHours
                 if (maxDuration >= config.minSessionHours * 60) {
-                    // Book it!
                     const sessionEnd = start + maxDuration;
 
-                    // Record session
                     student.sessions.push({
                         date: dayStr,
                         start: `${Math.floor(start / 60)}:${(start % 60).toString().padStart(2, '0')}`,
@@ -192,7 +209,6 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
                     });
                     student.completedHours += maxDuration / 60;
 
-                    // Update Capacity Map
                     const dayCap = getDayCapacity(dayStr);
                     const startSlot = Math.floor(start / 10);
                     const endSlot = Math.floor(sessionEnd / 10);
@@ -201,23 +217,18 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
                         if (dayCap[i] === undefined) dayCap[i] = 0;
                         dayCap[i]++;
                     }
-
-                    // Student is done for the day (assuming 1 session per day)
                     break;
                 }
             }
         }
 
-        // Check completion
         completedCount = students.filter(s => s.completedHours >= config.requiredHoursPerStudent).length;
     }
-
-    // Generate nice daily usage stats
-    // ...
 
     return {
         success: completedCount === config.totalStudents,
         completionDate: finalDate,
+        completionRate: completionRate,
         totalDays: allDays.length,
         studentResults: students,
         dailyUsage: dailyCapacity,

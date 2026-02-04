@@ -15,10 +15,13 @@ const DEFAULT_CONFIG: SimulationConfig = {
   maxConcurrentStudents: 5,
   minSessionHours: 2,
   maxSessionHours: 5,
+  classBufferMinutes: 10,
   clinicHours: {
     weekdays: { start: "08:30", end: "20:30" },
     saturday: { start: "09:30", end: "16:00" }
   },
+  openDays: [1, 2, 3, 4, 5, 6], // Mon-Sat (0=Sun)
+  closedDays: [],
   blockedClassTimes: []
 }
 
@@ -96,7 +99,7 @@ function App() {
             <div className="sticky top-28">
               {result ? (
                 <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                  <ResultsDashboard result={result} isSimulating={isSimulating} />
+                  <ResultsDashboard result={result} isSimulating={isSimulating} limit={config.maxConcurrentStudents} />
                 </div>
               ) : (
                 <div className="h-96 flex flex-col items-center justify-center bg-white dark:bg-gray-800/50 rounded-xl border border-dashed border-gray-300 dark:border-gray-700 text-gray-400">
