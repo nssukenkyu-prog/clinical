@@ -86,67 +86,110 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onChange }) =>
                 </div>
 
                 <div className="pt-4 border-t border-gray-100 dark:border-gray-700">
-                    <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">開講スケジュール (Operational Schedule)</h4>
+                    <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">開講カレンダー (Calendar Schedule)</h4>
+                    <p className="text-xs text-gray-400 mb-2">
+                        日付をクリックして 開講/休講 を切り替えてください。<br />
+                        (青色 = 開講, グレー = 休講/祝日設定)
+                    </p>
 
-                    {/* Open Days of Week */}
-                    <div className="mb-4">
-                        <label className="text-xs text-gray-500 block mb-2">開講曜日 (Open Days)</label>
-                        <div className="flex flex-wrap gap-2">
-                            {['日', '月', '火', '水', '木', '金', '土'].map((day, idx) => (
-                                <button
-                                    key={day}
-                                    onClick={() => {
-                                        const newOpen = config.openDays.includes(idx)
-                                            ? config.openDays.filter(d => d !== idx)
-                                            : [...config.openDays, idx].sort();
-                                        handleChange('openDays', newOpen);
-                                    }}
-                                    className={`w-8 h-8 rounded-full text-xs font-bold transition-all ${config.openDays.includes(idx)
-                                        ? 'bg-blue-600 text-white shadow-md'
-                                        : 'bg-gray-100 text-gray-400 dark:bg-gray-800'
-                                        }`}
-                                >
-                                    {day}
-                                </button>
-                            ))}
-                        </div>
+                    <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
+                        {/* Render simple calendar grids for Apr, May, Jun, Jul (based on config) */}
+                        {(() => {
+                            const start = new Date(config.startDate);
+                            const end = new Date(config.endDate);
+                            const months = [];
+                            let current = new Date(start.getFullYear(), start.getMonth(), 1);
+
+                            while (current <= end) {
+                                months.push(new Date(current));
+                                current.setMonth(current.getMonth() + 1);
+                            }
+
+                            return months.map(monthStart => {
+                                const monthName = monthStart.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long' });
+                                const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();
+                                const firstDayDayOfWeek = new Date(monthStart.getFullYear(), monthStart.getMonth(), 1).getDay(); // 0=Sun
+
+                                const days = [];
+                                for (let i = 0; i < firstDayDayOfWeek; i++) days.push(null); // padding
+                                for (let i = 1; i <= daysInMonth; i++) days.push(i);
+
+                                return (
+                                    <div key={monthName} className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                                        <h5 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 text-center">{monthName}</h5>
+                                        <div className="grid grid-cols-7 gap-1 text-center">
+                                            {['日', '月', '火', '水', '木', '金', '土'].map(d => (
+                                                <div key={d} className="text-[10px] text-gray-400 font-bold">{d}</div>
+                                            ))}
+                                            {days.map((d, idx) => {
+                                                if (!d) return <div key={idx}></div>;
+
+                                                const dateStr = `${monthStart.getFullYear()}-${(monthStart.getMonth() + 1).toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
+
+                                                // Create a stable key
+                                                const key = `day-${monthName}-${d}`;
+
+                                                // Check bounds
+                                                if (dateStr < config.startDate || dateStr > config.endDate) {
+                                                    return <div key={key} className="text-gray-300 text-xs py-1"></div>;
+                                                }
+
+                                                // Determine Status
+                                                const dayOfWeek = new Date(dateStr).getDay();
+                                                const isBaseOpen = config.openDays.includes(dayOfWeek);
+                                                const isExplicitlyClosed = config.closedDays.includes(dateStr);
+
+                                                const isOpen = isBaseOpen && !isExplicitlyClosed;
+
+                                                return (
+                                                    <button
+                                                        key={key}
+                                                        onClick={() => {
+                                                            if (!isBaseOpen) return;
+
+                                                            const newClosed = isExplicitlyClosed
+                                                                ? config.closedDays.filter(cd => cd !== dateStr)
+                                                                : [...config.closedDays, dateStr].sort();
+                                                            handleChange('closedDays', newClosed);
+                                                        }}
+                                                        disabled={!isBaseOpen}
+                                                        className={`text-xs py-1 rounded transition-colors ${isOpen
+                                                                ? 'bg-blue-100 text-blue-700 hover:bg-red-100 hover:text-red-700'
+                                                                : 'bg-gray-100 text-gray-400'
+                                                            } ${!isBaseOpen ? 'opacity-30 cursor-not-allowed' : ''}`}
+                                                    >
+                                                        {d}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                );
+                            });
+                        })()}
                     </div>
+                </div>
 
-                    {/* Closed Dates */}
-                    <div className="space-y-2">
-                        <label className="text-xs text-gray-500 block">休講日 (Holidays / Closed Dates)</label>
-                        <div className="flex gap-2">
-                            <input
-                                type="date"
-                                id="holiday-input"
-                                className="flex-1 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm"
-                            />
+                <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                    <label className="text-xs text-gray-400 block mb-2">曜日ごとの基本設定 (Weekly Base Pattern)</label>
+                    <div className="flex flex-wrap gap-2">
+                        {['日', '月', '火', '水', '木', '金', '土'].map((day, idx) => (
                             <button
+                                key={day}
                                 onClick={() => {
-                                    const input = document.getElementById('holiday-input') as HTMLInputElement;
-                                    if (input.value && !config.closedDays.includes(input.value)) {
-                                        handleChange('closedDays', [...config.closedDays, input.value].sort());
-                                        input.value = '';
-                                    }
+                                    const newOpen = config.openDays.includes(idx)
+                                        ? config.openDays.filter(d => d !== idx)
+                                        : [...config.openDays, idx].sort();
+                                    handleChange('openDays', newOpen);
                                 }}
-                                className="px-3 py-1.5 bg-gray-200 dark:bg-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300"
+                                className={`w-8 h-8 rounded-full text-xs font-bold transition-all ${config.openDays.includes(idx)
+                                        ? 'bg-blue-600 text-white shadow-md'
+                                        : 'bg-gray-200 text-gray-400 dark:bg-gray-800'
+                                    }`}
                             >
-                                追加
+                                {day}
                             </button>
-                        </div>
-                        <div className="flex flex-wrap gap-2 mt-2 max-h-32 overflow-y-auto">
-                            {config.closedDays.map(date => (
-                                <span key={date} className="inline-flex items-center px-2 py-1 rounded bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-xs">
-                                    {date}
-                                    <button
-                                        onClick={() => handleChange('closedDays', config.closedDays.filter(d => d !== date))}
-                                        className="ml-1 hover:text-red-900"
-                                    >
-                                        ×
-                                    </button>
-                                </span>
-                            ))}
-                        </div>
+                        ))}
                     </div>
                 </div>
 
