@@ -1,73 +1,41 @@
-# React + TypeScript + Vite
+# Clinical Training Simulator (臨床実習スケジュールシミュレーター)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## 概要 (Overview)
+2026年度の臨床実習に向けたスケジューリングの実現可能性を検証するためのシミュレーションツールです。
+学生100名が、限られた施設キャパシティと時間の中で、必須実習時間（例: 21時間）を期間内に完了できるかをシミュレーションします。
 
-Currently, two official plugins are available:
+### 主な機能 (Features)
+- **詳細なパラメーター設定**: 学生数、必要時間、同時最大人数、実施期間、実習時間の最小/最大値などを調整可能。
+- **授業スケジュールの考慮**: 曜日・時限ごとの「授業（実習不可）」時間帯を設定し、それを避けた予約を自動計算。
+- **高度なカレンダー制御**: 曜日ごとの開講設定に加え、特定の祝日や特別休講日をカレンダー上でクリックして設定可能。
+- **可変的行動シミュレーション**: 学生の「サボり」や「不定期な参加」を確率モデルで再現し、現実的な完了ペースを予測。
+- **可視化ダッシュボード**:
+  - 実習完了可否（Success/Fail）
+  - 全学生の完了予定日
+  - 日別の施設稼働率グラフ (ボトルネックの特定)
+  - 全学生100名の詳細スケジュール一覧
+  - 完了までの所要日数ヒストグラム
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## 技術スタック (Tech Stack)
+- **Framework**: React (Vite)
+- **Language**: TypeScript
+- **Styling**: Tailwind CSS
+- **Charts**: Recharts
+- **Date Handling**: date-fns
 
-## React Compiler
+## セットアップ (Setup)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```bash
+# Install dependencies
+npm install
 
-## Expanding the ESLint configuration
+# Run development server
+npm run dev
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+# Build for production
+npm run build
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## デプロイ (Deployment)
+GitHub Pages または Vercel/Netlify 等の静的ホスティングサービスにデプロイ可能です。
+`npm run build` で生成される `dist/` ディレクトリを使用してください。
