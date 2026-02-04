@@ -132,6 +132,58 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ result, isSi
                     </ResponsiveContainer>
                 </div>
             </div>
+
+            {/* Histogram & Sample Schedule */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Completion Days Histogram */}
+                <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                    <h3 className="text-lg font-semibold mb-4 text-gray-800 dark:text-white">完了までの日数分布 (Days to Complete)</h3>
+                    <div className="h-64 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart
+                                data={(() => {
+                                    const counts: Record<number, number> = {};
+                                    result.studentResults.forEach(s => {
+                                        const days = s.daysTaken || 0; // Fallback 0
+                                        if (days > 0) counts[days] = (counts[days] || 0) + 1;
+                                    });
+                                    return Object.entries(counts)
+                                        .map(([days, count]) => ({ days: Number(days), count }))
+                                        .sort((a, b) => a.days - b.days);
+                                })()}
+                            >
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
+                                <XAxis dataKey="days" stroke="#9ca3af" fontSize={12} tickLine={false} />
+                                <YAxis stroke="#9ca3af" fontSize={12} tickLine={false} />
+                                <Tooltip contentStyle={{ backgroundColor: '#1f2937', color: '#fff' }} />
+                                <Area type="monotone" dataKey="count" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.3} />
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+
+                {/* Sample Gantt / Schedule (First 5 Students) */}
+                <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                    <h3 className="text-lg font-semibold mb-4 text-gray-800 dark:text-white">サンプル受講スケジュール (最初の5名)</h3>
+                    <div className="space-y-3 max-h-64 overflow-y-auto">
+                        {result.studentResults.slice(0, 5).map(student => (
+                            <div key={student.studentId} className="flex flex-col gap-1 border-b border-gray-100 dark:border-gray-700 pb-2">
+                                <div className="flex justify-between text-xs font-bold text-gray-500">
+                                    <span>Student #{student.studentId}</span>
+                                    <span>{student.daysTaken} days / {student.completedHours.toFixed(1)}h</span>
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                    {student.sessions.map((session, idx) => (
+                                        <div key={idx} className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-[10px] rounded">
+                                            {session.date.slice(5)}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
         </div>
     );
 };

@@ -68,6 +68,24 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onChange }) =>
                 </div>
 
                 <div className="pt-4 border-t border-gray-100 dark:border-gray-700">
+                    <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">シミュレーション設定 (Settings)</h4>
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="checkbox"
+                            checked={config.attendanceVariance}
+                            onChange={(e) => handleChange('attendanceVariance', e.target.checked)}
+                            className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <div>
+                            <span className="text-sm font-bold text-gray-800 dark:text-gray-200">学生の出頭率にばらつきを持たせる</span>
+                            <p className="text-xs text-gray-500">
+                                OFF: 全員が毎日最短で予約 / ON: 週1回の人や集中型の人など個人差(確率)を反映
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="pt-4 border-t border-gray-100 dark:border-gray-700">
                     <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">開講スケジュール (Operational Schedule)</h4>
 
                     {/* Open Days of Week */}
@@ -84,8 +102,8 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onChange }) =>
                                         handleChange('openDays', newOpen);
                                     }}
                                     className={`w-8 h-8 rounded-full text-xs font-bold transition-all ${config.openDays.includes(idx)
-                                            ? 'bg-blue-600 text-white shadow-md'
-                                            : 'bg-gray-100 text-gray-400 dark:bg-gray-800'
+                                        ? 'bg-blue-600 text-white shadow-md'
+                                        : 'bg-gray-100 text-gray-400 dark:bg-gray-800'
                                         }`}
                                 >
                                     {day}

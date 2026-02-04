@@ -50,11 +50,6 @@ const isBlocked = (
         const period = CLASS_PERIODS.find(p => p.period === block.period);
         if (!period) continue;
 
-        // Apply buffer: Class effectively starts earlier and ends later for the purpose of conflict
-        // e.g. Class 10:00-11:00. Buffer 10.
-        // Effective Block: 09:50 - 11:10.
-        // If training wants to end at 09:55, it overlaps with 09:50. -> Blocked. Correct (need 10m before).
-        // If training wants to start at 11:05, it overlaps with 11:10. -> Blocked. Correct (need 10m after).
         const blockStart = timeToMinutes(period.startTime) - bufferMinutes;
         const blockEnd = timeToMinutes(period.endTime) + bufferMinutes;
 
@@ -76,6 +71,8 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
     const students: StudentProgress[] = Array.from({ length: config.totalStudents }, (_, i) => ({
         studentId: i + 1,
         completedHours: 0,
+        bookingProbability: config.attendanceVariance ? 0.3 + (Math.random() * 0.7) : 1.0, // 30% - 100% chance
+        daysTaken: 0,
         sessions: []
     }));
 
@@ -84,8 +81,7 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
 
     const getDayCapacity = (dateStr: string) => {
         if (!dailyCapacity[dateStr]) {
-            dailyCapacity[dateStr] = new Array(1440).fill(0); // minute-by-minute resolution for simplicity or 10-min to save space
-            // Let's use 10-minute slots: 24 * 6 = 144 slots total
+            dailyCapacity[dateStr] = new Array(1440).fill(0);
         }
         return dailyCapacity[dateStr];
     };
@@ -135,7 +131,7 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
         totalMaxCapacityMinutes += (availableMinutes * config.maxConcurrentStudents);
     }
 
-    // Completion Rate: (Capacity / Required) * 100
+    // Completion Rate (Percentage)
     const completionRate = Math.round((totalMaxCapacityMinutes / requiredTotalMinutes) * 100);
 
     // Simulation Loop
@@ -171,6 +167,9 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
 
         for (const student of activeStudents) {
             if (student.completedHours >= config.requiredHoursPerStudent) continue;
+
+            // VARIANCE CHECK: Skip based on probability if variance is enabled
+            if (Math.random() > student.bookingProbability) continue;
 
             for (let start = openMin; start <= closeMin - (config.minSessionHours * 60); start += 10) {
                 let maxDuration = 0;
@@ -208,6 +207,7 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
                         duration: maxDuration / 60
                     });
                     student.completedHours += maxDuration / 60;
+                    student.daysTaken++;
 
                     const dayCap = getDayCapacity(dayStr);
                     const startSlot = Math.floor(start / 10);
@@ -221,7 +221,6 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
                 }
             }
         }
-
         completedCount = students.filter(s => s.completedHours >= config.requiredHoursPerStudent).length;
     }
 

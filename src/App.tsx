@@ -22,7 +22,8 @@ const DEFAULT_CONFIG: SimulationConfig = {
   },
   openDays: [1, 2, 3, 4, 5, 6], // Mon-Sat (0=Sun)
   closedDays: [],
-  blockedClassTimes: []
+  blockedClassTimes: [],
+  attendanceVariance: false // Default to off
 }
 
 function App() {

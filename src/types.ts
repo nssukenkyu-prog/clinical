@@ -35,11 +35,14 @@ export interface SimulationConfig {
     blockedClassTimes: BlockedTime[];
     openDays: number[]; // 0=Sun, 1=Mon, ..., 6=Sat
     closedDays: string[]; // YYYY-MM-DD
+    attendanceVariance: boolean; // Simulates random student behavior
 }
 
 export interface StudentProgress {
     studentId: number;
     completedHours: number;
+    bookingProbability: number; // 0.0 - 1.0 (New)
+    daysTaken: number; // Count of unique days attended (New)
     sessions: {
         date: string;
         start: string;
