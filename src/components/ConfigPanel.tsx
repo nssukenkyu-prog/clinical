@@ -73,25 +73,16 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onChange }) =>
                                 className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm"
                             />
                         </div>
-                        <div className="flex gap-4">
-                            <div className="flex-1 space-y-2">
-                                <label className="text-xs text-gray-500">Min Hours/Day</label>
-                                <input
-                                    type="number"
-                                    value={config.minSessionHours}
-                                    onChange={(e) => handleChange('minSessionHours', parseFloat(e.target.value))}
-                                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm"
-                                />
-                            </div>
-                            <div className="flex-1 space-y-2">
-                                <label className="text-xs text-gray-500">Max Hours/Day</label>
-                                <input
-                                    type="number"
-                                    value={config.maxSessionHours}
-                                    onChange={(e) => handleChange('maxSessionHours', parseFloat(e.target.value))}
-                                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm"
-                                />
-                            </div>
+                        {/* CHANGED: Single Input for Daily Session Duration */}
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">1日の実習時間/人 (Hours/Day/Person)</label>
+                            <input
+                                type="number"
+                                value={config.dailySessionDuration}
+                                onChange={(e) => handleChange('dailySessionDuration', parseFloat(e.target.value))}
+                                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm"
+                                step="0.5"
+                            />
                         </div>
                     </div>
                 </section>
@@ -197,8 +188,8 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onChange }) =>
                                         handleChange('openDays', newOpen);
                                     }}
                                     className={`w-8 h-8 rounded-full text-xs font-bold transition-all ${config.openDays.includes(idx)
-                                        ? 'bg-blue-600 text-white shadow-md'
-                                        : 'bg-gray-100 text-gray-400 dark:bg-gray-800'
+                                            ? 'bg-blue-600 text-white shadow-md'
+                                            : 'bg-gray-100 text-gray-400 dark:bg-gray-800'
                                         }`}
                                 >
                                     {day}
@@ -258,8 +249,8 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onChange }) =>
                                                             }}
                                                             disabled={!isBaseOpen}
                                                             className={`text-[10px] w-full py-1 rounded ${isOpen
-                                                                ? 'bg-blue-100 text-blue-700'
-                                                                : 'bg-gray-100 text-gray-300'
+                                                                    ? 'bg-blue-100 text-blue-700'
+                                                                    : 'bg-gray-100 text-gray-300'
                                                                 }`}
                                                         >
                                                             {d}

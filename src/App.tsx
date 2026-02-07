@@ -9,8 +9,7 @@ const DEFAULT_CONFIG: SimulationConfig = {
   startDate: "2026-04-01",
   endDate: "2026-07-31",
   maxConcurrentStudents: 5,
-  minSessionHours: 2,
-  maxSessionHours: 5,
+  dailySessionDuration: 3,
   classBufferMinutes: 10,
   clinicHours: {
     weekdays: { start: "08:30", end: "20:30" },

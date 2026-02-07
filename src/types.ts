@@ -38,8 +38,7 @@ export interface SimulationConfig {
 
     // Global Constraints
     maxConcurrentStudents: number;
-    minSessionHours: number;
-    maxSessionHours: number;
+    dailySessionDuration: number; // Training time/day/person (Strict)
     classBufferMinutes: number;
     clinicHours: ClinicHours;
     openDays: number[]; // 0=Sun
