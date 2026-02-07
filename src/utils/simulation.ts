@@ -85,7 +85,6 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
     const totalStudentsCount = students.length;
 
     // Global Capacity Map: [DateStr] -> Array of 144 (10-min slots) containing student counts
-    // 0 = 00:00, 143 = 23:50
     const dailyCapacity: Record<string, number[]> = {};
     const getDayCapacity = (dateStr: string) => {
         if (!dailyCapacity[dateStr]) dailyCapacity[dateStr] = new Array(144).fill(0);
@@ -96,9 +95,14 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
     const getGroup = (id: string) => config.groups.find(g => g.id === id);
 
     // --- Pre-calculation for "Completion Rate" (Feasibility) ---
-    // This is an estimation based on pure open hours vs required hours
-    let totalMaxCapacityMinutes = 0;
-    const requiredTotalMinutes = config.groups.reduce((sum, g) => sum + (g.count * g.requiredHours * 60), 0);
+    // REVISED: "Effective" Capacity Calculation
+    // Instead of raw open hours, we calculate how many PERSON-HOURS can comfortably fit.
+    // Constraint 1: Max Concurrent
+    // Constraint 2: Fixed Session Duration (Students occupy a block)
+    // Constraint 3: One session per day per student (Throughput limit)
+
+    let totalEffectiveCapacityHours = 0;
+    const requiredTotalHours = config.groups.reduce((sum, g) => sum + (g.count * g.requiredHours), 0);
 
     for (const day of allDays) {
         const dayStr = formatDate(day);
@@ -109,12 +113,23 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
         const hours = dayOfWeek === 6 ? config.clinicHours.saturday : config.clinicHours.weekdays;
         const openMin = timeToMinutes(hours.start);
         const closeMin = timeToMinutes(hours.end);
+        const totalOpenMinutes = Math.max(0, closeMin - openMin);
 
-        // This is a rough upper bound estimate
-        totalMaxCapacityMinutes += (Math.max(0, closeMin - openMin) * config.maxConcurrentStudents);
+        // Calculate max sessions per day for ONE "seat" (concurrent slot)
+        // e.g. Open 8 hours, Session 3 hours -> floor(8/3) = 2 sessions max per seat.
+        // This is a simplification but much closer to reality than raw hours.
+        const sessionDurationMin = config.dailySessionDuration * 60;
+        if (sessionDurationMin <= 0) continue;
+
+        const sessionsPerSeat = Math.floor(totalOpenMinutes / sessionDurationMin);
+        const totalSessionsPossible = sessionsPerSeat * config.maxConcurrentStudents;
+
+        // Convert back to hours
+        totalEffectiveCapacityHours += (totalSessionsPossible * config.dailySessionDuration);
     }
-    const completionRate = requiredTotalMinutes > 0
-        ? Math.round((totalMaxCapacityMinutes / requiredTotalMinutes) * 100)
+
+    const completionRate = requiredTotalHours > 0
+        ? Math.round((totalEffectiveCapacityHours / requiredTotalHours) * 100)
         : 0;
     // ------------------------------------------------------------
 
@@ -172,9 +187,6 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
             // Determine Target Duration
             const remainingHours = group.requiredHours - student.completedHours;
             // Target is STRICTLY config.dailySessionDuration, UNLESS they need less to finish.
-            // We do not allow "shorter but not finishing" sessions unless it replaces the full session (which implies they finish).
-            // Actually, if they need 5h but only 3h is allowed per day, they do 3h.
-            // If they need 1h and 3h is allowed, they do 1h.
             let targetDurationMinutes = Math.min(remainingHours, config.dailySessionDuration) * 60;
 
             // Round to nearest 10 for slot alignment
@@ -193,15 +205,12 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
                 }
 
                 // 2. Check Capacity
-                // Check every 10-min slot in the range
                 let capacityOk = true;
                 const startSlotIdx = Math.floor(start / 10);
                 const endSlotIdx = Math.floor(end / 10);
                 const dayCap = getDayCapacity(dayStr);
 
                 for (let i = startSlotIdx; i < endSlotIdx; i++) {
-                    // Note: dayCap is array of 144 slots (0-143). 
-                    // start/10 might be > 143 if time > 24h (unlikely given logic, but safe to check)
                     if ((dayCap[i] || 0) >= config.maxConcurrentStudents) {
                         capacityOk = false;
                         break;
@@ -246,7 +255,7 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
         completionRate,
         totalDays: allDays.length,
         studentResults: students,
-        dailyUsage: dailyCapacity, // This format might need adjustment for the chart if it expects [start, end] ranges, but the dashboard uses this map primarily for heatmap/utilization
+        dailyUsage: dailyCapacity,
         messages
     };
 };

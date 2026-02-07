@@ -1,11 +1,21 @@
 import React, { useMemo } from 'react';
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { SimulationResult } from '../types';
+import {
+    BarChart,
+    Bar,
+    XAxis,
+    YAxis,
+    CartesianGrid,
+    Tooltip,
+    ResponsiveContainer,
+    Cell,
+    ReferenceLine
+} from 'recharts';
 
 interface ResultsDashboardProps {
-    result: SimulationResult | null;
+    result: SimulationResult;
     isSimulating: boolean;
-    limit: number; // Max concurrent students limit
+    limit: number;
 }
 
 export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ result, isSimulating, limit }) => {
@@ -20,206 +30,213 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ result, isSi
         );
     }
 
-    if (!result) return null;
+    // --- Chart Data Preparation (Existing) ---
+    const activeDays = Object.keys(result.dailyUsage).sort();
 
-    const chartData = useMemo(() => {
-        // Transform dailyUsage to chart format
-        const data = [];
-        const dates = Object.keys(result.dailyUsage).sort();
-
-        for (const date of dates) {
+    const utilizationData = useMemo(() => {
+        return activeDays.map(date => {
             const slots = result.dailyUsage[date];
+            // Average utilization across open hours (assuming 8:30-20:30 roughly for visualization scale)
+            // or just take the MAX concurrent usage of the day? MAX is better for bottleneck detection.
             const maxConcurrent = Math.max(...slots);
-            data.push({
+            // Also calculate "Seat Hours" used?
+            // Sum of all slots / 6 (since slots are 10min) = Total Student-Hours that day
+            const totalStudentHours = slots.reduce((a, b) => a + b, 0) / 6;
+
+            return {
                 date: date.slice(5), // MM-DD
                 maxConcurrent,
-                limit,
-                usagePercent: Math.round((maxConcurrent / limit) * 100)
-            });
-        }
-        return data;
-    }, [result, limit]);
+                totalStudentHours,
+                isFull: maxConcurrent >= limit
+            };
+        });
+    }, [result.dailyUsage, limit, activeDays]);
 
+    const completionHistogram = useMemo(() => {
+        const counts: Record<number, number> = {};
+        result.studentResults.forEach(s => {
+            const days = s.daysTaken;
+            counts[days] = (counts[days] || 0) + 1;
+        });
+        return Object.entries(counts)
+            .map(([days, count]) => ({ days: Number(days), count }))
+            .sort((a, b) => a.days - b.days);
+    }, [result.studentResults]);
+
+    // --- CSV Export Logic ---
+    const handleDownloadCSV = () => {
+        // 1. Session Log
+        const headers = ['Student ID', 'Group ID', 'Date', 'Start Time', 'End Time', 'Duration (Hrs)', 'Cumulative Hours'];
+        const rows: string[] = [];
+
+        result.studentResults.forEach(student => {
+            let cumulative = 0;
+            student.sessions.forEach(session => {
+                cumulative += session.duration;
+                rows.push([
+                    student.studentId,
+                    student.groupId,
+                    session.date,
+                    session.start,
+                    session.end,
+                    session.duration.toFixed(2),
+                    cumulative.toFixed(2)
+                ].join(','));
+            });
+        });
+
+        const csvContent = [headers.join(','), ...rows].join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `simulation_sessions_${new Date().toISOString().slice(0, 10)}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    // --- Render ---
     return (
         <div className="space-y-6">
             {/* KPI Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className={`p-6 rounded-xl border-l-4 shadow-lg ${result.success ? 'bg-green-50 dark:bg-green-900/20 border-green-500' : 'bg-red-50 dark:bg-red-900/20 border-red-500'}`}>
-                    <h4 className="text-sm uppercase text-gray-500 font-bold mb-1">実習完了可否 (Status)</h4>
-                    <p className={`text-2xl font-bold ${result.success ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
-                        {result.success ? "達成可能" : "達成不可"}
-                    </p>
-                </div>
-
-                <div className="p-6 bg-white dark:bg-gray-800 rounded-xl border-l-4 border-blue-500 shadow-lg">
-                    <h4 className="text-sm uppercase text-gray-500 font-bold mb-1">全学生完了日 (Completion Date)</h4>
-                    <p className="text-2xl font-bold text-gray-800 dark:text-white">
-                        {result.completionDate || "未完了"}
-                    </p>
-                </div>
-
-                <div className="p-6 bg-white dark:bg-gray-800 rounded-xl border-l-4 border-purple-500 shadow-lg">
-                    <h4 className="text-sm uppercase text-gray-500 font-bold mb-1">実習日数 (Days)</h4>
-                    <p className="text-2xl font-bold text-gray-800 dark:text-white">
-                        {result.totalDays} <span className="text-sm font-normal text-gray-400">日間</span>
-                    </p>
-                </div>
-
-                <div className="p-6 bg-white dark:bg-gray-800 rounded-xl border-l-4 border-yellow-500 shadow-lg md:col-span-3 lg:col-span-1">
-                    <h4 className="text-sm uppercase text-gray-500 font-bold mb-1">達成可能率 (Feasibility Rate)</h4>
-                    <div className="flex items-end gap-2">
-                        <p className={`text-3xl font-bold ${result.completionRate >= 100 ? 'text-green-600' : 'text-red-600'}`}>
-                            {result.completionRate}%
-                        </p>
-                        <span className="text-xs text-gray-500 mb-1">
-                            (理論上の最大収容可能人数 / 必要人数)
-                        </span>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className={`p-4 rounded-xl text-white shadow-lg ${result.success ? 'bg-green-600' : 'bg-red-500'}`}>
+                    <div className="text-xs font-bold uppercase opacity-80 mb-1">Status</div>
+                    <div className="text-2xl font-bold flex items-center gap-2">
+                        {result.success ? (
+                            <>
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                Success
+                            </>
+                        ) : (
+                            <>
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                                Failed
+                            </>
+                        )}
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2.5 mt-2 dark:bg-gray-700">
-                        <div
-                            className={`h-2.5 rounded-full ${result.completionRate >= 100 ? 'bg-green-600' : 'bg-red-600'}`}
-                            style={{ width: `${Math.min(result.completionRate, 100)}%` }}
-                        ></div>
+                    <div className="text-sm mt-2 opacity-90">
+                        {result.success ? "All students completed." : "Time ran out."}
                     </div>
-                    <p className="text-xs text-gray-400 mt-2">
-                        100%未満は物理的に不可能です。120%以上を推奨します。
-                    </p>
+                </div>
+
+                <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow border border-gray-200 dark:border-gray-700">
+                    <div className="text-xs font-bold text-gray-500 uppercase mb-1">Completion Date</div>
+                    <div className="text-2xl font-bold text-gray-800 dark:text-white">
+                        {result.completionDate || "N/A"}
+                    </div>
+                    <div className="text-xs text-gray-400 mt-2">
+                        Limit: {result.totalDays} days avail
+                    </div>
+                </div>
+
+                <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow border border-gray-200 dark:border-gray-700">
+                    <div className="text-xs font-bold text-gray-500 uppercase mb-1">Feasibility Rate (Est.)</div>
+                    <div className={`text-2xl font-bold ${result.completionRate >= 100 ? 'text-green-500' : 'text-orange-500'}`}>
+                        {result.completionRate}%
+                    </div>
+                    <div className="text-xs text-gray-400 mt-2">
+                        Effective Cap / Required
+                    </div>
+                </div>
+
+                {/* Download CSV Button */}
+                <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow border border-gray-200 dark:border-gray-700 flex flex-col justify-center items-center">
+                    <button
+                        onClick={handleDownloadCSV}
+                        className="w-full h-full flex flex-col items-center justify-center p-2 rounded-lg border-2 border-dashed border-gray-300 hover:border-blue-500 hover:bg-blue-50 dark:border-gray-600 dark:hover:border-blue-400 transition-colors group"
+                    >
+                        <svg className="w-8 h-8 text-gray-400 group-hover:text-blue-500 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        <span className="text-sm font-bold text-gray-500 group-hover:text-blue-600">Download Excel (CSV)</span>
+                    </button>
                 </div>
             </div>
 
-            {/* Charts */}
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-                <h3 className="text-lg font-semibold mb-6 text-gray-800 dark:text-white">日別利用者数推移 (Daily Clinic Usage)</h3>
-                <div className="h-80 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={chartData}>
-                            <defs>
-                                <linearGradient id="colorMax" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
-                                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                                </linearGradient>
-                            </defs>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#374151" opacity={0.3} />
-                            <XAxis dataKey="date" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} minTickGap={30} />
-                            <YAxis
-                                stroke="#9ca3af"
-                                fontSize={12}
-                                tickLine={false}
-                                axisLine={false}
-                                domain={[0, limit + 1]} // Dynamic domain based on limit
-                            />
-                            <Tooltip
-                                contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#f3f4f6' }}
-                            />
-                            {/* Capacity Limit Line */}
-                            <Area
-                                type="monotone"
-                                dataKey="limit"
-                                stroke="transparent"
-                                fill="#ef4444"
-                                fillOpacity={0.05} // Subtle red background for capacity
-                                isAnimationActive={false}
-                            />
-                            <Area
-                                type="monotone"
-                                dataKey="maxConcurrent"
-                                stroke="#3b82f6"
-                                fillOpacity={1}
-                                fill="url(#colorMax)"
-                                strokeWidth={2}
-                            />
-                        </AreaChart>
-                    </ResponsiveContainer>
-                </div>
-            </div>
-
-            {/* Histogram & Sample Schedule */}
+            {/* Charts Section */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Completion Days Histogram */}
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-                    <h3 className="text-lg font-semibold mb-4 text-gray-800 dark:text-white">完了までの日数分布 (Days to Complete)</h3>
-                    <div className="h-64 w-full">
+                {/* 1. Daily Utilization (Max Concurrent) */}
+                <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow border border-gray-200 dark:border-gray-700">
+                    <h4 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-4">Daily Peak Utilization</h4>
+                    <div className="h-64">
                         <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart
-                                data={(() => {
-                                    const counts: Record<number, number> = {};
-                                    result.studentResults.forEach(s => {
-                                        const days = s.daysTaken || 0; // Fallback 0
-                                        if (days > 0) counts[days] = (counts[days] || 0) + 1;
-                                    });
-                                    return Object.entries(counts)
-                                        .map(([days, count]) => ({ days: Number(days), count }))
-                                        .sort((a, b) => a.days - b.days);
-                                })()}
-                            >
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
-                                <XAxis dataKey="days" stroke="#9ca3af" fontSize={12} tickLine={false} />
-                                <YAxis stroke="#9ca3af" fontSize={12} tickLine={false} />
-                                <Tooltip contentStyle={{ backgroundColor: '#1f2937', color: '#fff' }} />
-                                <Area type="monotone" dataKey="count" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.3} />
-                            </AreaChart>
-                        </ResponsiveContainer>
-                    </div>
-                </div>
-
-                {/* Daily Utilization Rate Chart (Detailed Feasibility) */}
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-                    <h3 className="text-lg font-semibold mb-4 text-gray-800 dark:text-white">日別稼働率 (Daily Utilization Rate)</h3>
-                    <p className="text-xs text-gray-500 mb-2">定員に対する予約の埋まり具合 (100% = 満員)</p>
-                    <div className="h-64 w-full">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={chartData}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
-                                <XAxis dataKey="date" stroke="#9ca3af" fontSize={10} tickLine={false} minTickGap={20} />
-                                <YAxis stroke="#9ca3af" fontSize={12} tickLine={false} domain={[0, 100]} unit="%" />
-                                <Tooltip contentStyle={{ backgroundColor: '#1f2937', color: '#fff' }} />
-                                <Area
-                                    type="monotone"
-                                    dataKey="usagePercent"
-                                    stroke="#10b981"
-                                    fill="#10b981"
-                                    fillOpacity={0.2}
-                                    name="Utilization %"
+                            <BarChart data={utilizationData}>
+                                <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                                <XAxis dataKey="date" fontSize={10} />
+                                <YAxis domain={[0, limit + 2]} allowDecimals={false} fontSize={10} />
+                                <Tooltip
+                                    contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#fff' }}
                                 />
-                            </AreaChart>
+                                <Bar dataKey="maxConcurrent" name="Peak Students">
+                                    {utilizationData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={entry.isFull ? '#ef4444' : '#3b82f6'} />
+                                    ))}
+                                </Bar>
+                                <ReferenceLine y={limit} label="Max" stroke="red" strokeDasharray="3 3" />
+                            </BarChart>
                         </ResponsiveContainer>
                     </div>
                 </div>
 
-                {/* All 100 Students Schedule View */}
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 lg:col-span-2">
-                    <h3 className="text-lg font-semibold mb-4 text-gray-800 dark:text-white">全学生スケジュール一覧 (All Students)</h3>
-                    <div className="max-h-96 overflow-y-auto border border-gray-100 dark:border-gray-700 rounded-lg">
-                        <table className="w-full text-left text-sm">
-                            <thead className="bg-gray-50 dark:bg-gray-900 sticky top-0 z-10">
+                {/* 2. Completion Distribution */}
+                <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow border border-gray-200 dark:border-gray-700">
+                    <h4 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-4">Frequency of Days Taken</h4>
+                    <div className="h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={completionHistogram}>
+                                <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                                <XAxis dataKey="days" label={{ value: 'Days', position: 'insideBottom', offset: -5 }} fontSize={10} />
+                                <YAxis allowDecimals={false} fontSize={10} />
+                                <Tooltip
+                                    contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#fff' }}
+                                />
+                                <Bar dataKey="count" fill="#10b981" name="Student Count" />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+            </div>
+
+            {/* All Students List (Expandable) */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-200 dark:border-gray-700 overflow-hidden">
+                <details className="group">
+                    <summary className="p-4 cursor-pointer font-bold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex justify-between items-center transition-colors">
+                        <span>All Students Schedule ({result.studentResults.length})</span>
+                        <span className="text-xs text-gray-400 group-open:rotate-180 transition-transform">▼</span>
+                    </summary>
+                    <div className="p-0 overflow-x-auto max-h-96 overflow-y-auto border-t border-gray-100 dark:border-gray-700">
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-gray-50 dark:bg-gray-700 text-gray-500 uppercase font-bold text-xs sticky top-0">
                                 <tr>
-                                    <th className="p-3 font-medium text-gray-500">ID</th>
-                                    <th className="p-3 font-medium text-gray-500">Hours</th>
-                                    <th className="p-3 font-medium text-gray-500">Days</th>
-                                    <th className="p-3 font-medium text-gray-500">Schedule</th>
+                                    <th className="px-4 py-3">ID</th>
+                                    <th className="px-4 py-3">Group</th>
+                                    <th className="px-4 py-3">Status</th>
+                                    <th className="px-4 py-3">Total Hrs</th>
+                                    <th className="px-4 py-3">Days</th>
+                                    <th className="px-4 py-3">Last Session</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                                {result.studentResults.map(student => (
-                                    <tr key={student.studentId} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                                        <td className="p-3 font-mono text-gray-400">#{student.studentId}</td>
-                                        <td className="p-3 font-bold">{student.completedHours.toFixed(1)}h</td>
-                                        <td className="p-3">{student.daysTaken} days</td>
-                                        <td className="p-3">
-                                            <div className="flex flex-wrap gap-1">
-                                                {student.sessions.map((session, idx) => (
-                                                    <span key={idx} className="px-1.5 py-0.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-[10px] rounded border border-blue-100 dark:border-blue-800/50">
-                                                        {session.date.slice(5)} ({session.start}-{session.end})
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
+                            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                {result.studentResults.map(s => {
+                                    return (
+                                        <tr key={s.studentId} className="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                                            <td className="px-4 py-2 font-mono text-gray-500">#{s.studentId}</td>
+                                            <td className="px-4 py-2"><span className="px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-xs">{s.groupId}</span></td>
+                                            <td className="px-4 py-2">
+                                                <span className="text-green-600 font-bold">Done</span>
+                                            </td>
+                                            <td className="px-4 py-2">{s.completedHours.toFixed(1)}</td>
+                                            <td className="px-4 py-2">{s.daysTaken}</td>
+                                            <td className="px-4 py-2 text-xs text-gray-400">
+                                                {s.sessions.length > 0 ? s.sessions[s.sessions.length - 1].date : '-'}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
-                </div>
+                </details>
             </div>
         </div>
     );
