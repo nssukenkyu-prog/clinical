@@ -40,8 +40,8 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ result, isSi
             // or just take the MAX concurrent usage of the day? MAX is better for bottleneck detection.
             const maxConcurrent = Math.max(...slots);
             // Also calculate "Seat Hours" used?
-            // Sum of all slots / 6 (since slots are 10min) = Total Student-Hours that day
-            const totalStudentHours = slots.reduce((a, b) => a + b, 0) / 6;
+            // Sum of all slots / 12 (since slots are 5min) = Total Student-Hours that day
+            const totalStudentHours = slots.reduce((a, b) => a + b, 0) / 12;
 
             return {
                 date: date.slice(5), // MM-DD
@@ -86,7 +86,8 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ result, isSi
         });
 
         const csvContent = [headers.join(','), ...rows].join('\n');
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        // Add BOM for Excel UTF-8 compatibility
+        const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.setAttribute('href', url);

@@ -6,16 +6,16 @@ import { runSimulation } from './utils/simulation'
 
 const DEFAULT_CONFIG: SimulationConfig = {
   year: 2026,
-  startDate: "2026-04-01",
-  endDate: "2026-07-31",
+  startDate: "2026-04-13",
+  endDate: "2026-07-28",
   maxConcurrentStudents: 5,
-  dailySessionDuration: 3,
+  dailySessionDuration: 5.25, // 5 hours 15 minutes
   classBufferMinutes: 10,
   clinicHours: {
-    weekdays: { start: "08:30", end: "20:30" },
-    saturday: { start: "09:30", end: "16:00" }
+    weekdays: { start: "15:15", end: "20:30" }, // Tue-Fri
+    saturday: { start: "10:00", end: "15:15" }  // Sat
   },
-  openDays: [1, 2, 3, 4, 5, 6], // Mon-Sat
+  openDays: [2, 3, 4, 5, 6], // Tue-Sat (Mon=1 is closed)
   closedDays: [],
   attendanceVariance: false,
   groups: [

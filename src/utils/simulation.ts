@@ -84,10 +84,11 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
 
     const totalStudentsCount = students.length;
 
-    // Global Capacity Map: [DateStr] -> Array of 144 (10-min slots) containing student counts
+    // Global Capacity Map: [DateStr] -> Array of 288 (5-min slots) containing student counts
+    // 24 * 60 / 5 = 288
     const dailyCapacity: Record<string, number[]> = {};
     const getDayCapacity = (dateStr: string) => {
-        if (!dailyCapacity[dateStr]) dailyCapacity[dateStr] = new Array(144).fill(0);
+        if (!dailyCapacity[dateStr]) dailyCapacity[dateStr] = new Array(288).fill(0);
         return dailyCapacity[dateStr];
     };
 
@@ -116,8 +117,7 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
         const totalOpenMinutes = Math.max(0, closeMin - openMin);
 
         // Calculate max sessions per day for ONE "seat" (concurrent slot)
-        // e.g. Open 8 hours, Session 3 hours -> floor(8/3) = 2 sessions max per seat.
-        // This is a simplification but much closer to reality than raw hours.
+        // e.g. Open 5.25 hours, Session 5.25 hours -> floor(1) = 1 session max per seat.
         const sessionDurationMin = config.dailySessionDuration * 60;
         if (sessionDurationMin <= 0) continue;
 
@@ -137,6 +137,7 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
     let completedCount = 0;
     let finalDate: string | null = null;
     const messages: string[] = [];
+    const SLOT_INTERVAL = 5; // 5 minutes granularity
 
     for (const day of allDays) {
         if (completedCount >= totalStudentsCount) {
@@ -189,14 +190,13 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
             // Target is STRICTLY config.dailySessionDuration, UNLESS they need less to finish.
             let targetDurationMinutes = Math.min(remainingHours, config.dailySessionDuration) * 60;
 
-            // Round to nearest 10 for slot alignment
-            targetDurationMinutes = Math.ceil(targetDurationMinutes / 10) * 10;
+            // Round to nearest SLOT_INTERVAL for slot alignment
+            targetDurationMinutes = Math.ceil(targetDurationMinutes / SLOT_INTERVAL) * SLOT_INTERVAL;
 
             if (targetDurationMinutes <= 0) continue;
 
             // Find a slot
-            // Step: 10 mins
-            for (let start = openMin; start <= closeMin - targetDurationMinutes; start += 10) {
+            for (let start = openMin; start <= closeMin - targetDurationMinutes; start += SLOT_INTERVAL) {
                 const end = start + targetDurationMinutes;
 
                 // 1. Check Class Blocks
@@ -206,9 +206,12 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
 
                 // 2. Check Capacity
                 let capacityOk = true;
-                const startSlotIdx = Math.floor(start / 10);
-                const endSlotIdx = Math.floor(end / 10);
+                const startSlotIdx = Math.floor(start / SLOT_INTERVAL);
+                const endSlotIdx = Math.floor(end / SLOT_INTERVAL);
                 const dayCap = getDayCapacity(dayStr);
+
+                // Safety check for array bounds
+                if (endSlotIdx > dayCap.length) continue;
 
                 for (let i = startSlotIdx; i < endSlotIdx; i++) {
                     if ((dayCap[i] || 0) >= config.maxConcurrentStudents) {
@@ -245,7 +248,8 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
         // Update Global Completion Count
         completedCount = students.filter(s => {
             const g = getGroup(s.groupId);
-            return g && s.completedHours >= g.requiredHours - 0.01; // tolerance
+            // Tolerance for floating point
+            return g && s.completedHours >= g.requiredHours - 0.01;
         }).length;
     }
 
