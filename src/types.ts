@@ -16,10 +16,9 @@ export interface BlockedTime {
     period: number; // 1-5
 }
 
-export interface ClinicHours {
-    weekdays: TimeSlot;
-    saturday: TimeSlot;
-}
+// Map: 0(Sun) -> 6(Sat) to { start, end } or null (closed)
+export type WeeklySchedule = Record<number, TimeSlot | null>;
+
 
 export interface StudentGroup {
     id: string;
@@ -40,12 +39,16 @@ export interface SimulationConfig {
     maxConcurrentStudents: number;
     dailySessionDuration: number; // Training time/day/person (Strict)
     classBufferMinutes: number;
-    clinicHours: ClinicHours;
-    openDays: number[]; // 0=Sun
+
+    // Schedule
+    weeklySchedule: WeeklySchedule; // Replaces clinicHours + openDays
     closedDays: string[]; // YYYY-MM-DD
+
+    // Options
+    enableClassSchedule: boolean; // If false, blockedClassTimes are ignored
     attendanceVariance: boolean;
 
-    // Groups (Replaces totalStudents / blockedClassTimes / requiredHoursPerStudent)
+    // Groups
     groups: StudentGroup[];
 }
 

@@ -108,12 +108,13 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
     for (const day of allDays) {
         const dayStr = formatDate(day);
         const dayOfWeek = getDay(day);
-        if (!config.openDays.includes(dayOfWeek)) continue;
+        const schedule = config.weeklySchedule[dayOfWeek];
+
+        if (!schedule) continue; // Closed day
         if (config.closedDays.includes(dayStr)) continue;
 
-        const hours = dayOfWeek === 6 ? config.clinicHours.saturday : config.clinicHours.weekdays;
-        const openMin = timeToMinutes(hours.start);
-        const closeMin = timeToMinutes(hours.end);
+        const openMin = timeToMinutes(schedule.start);
+        const closeMin = timeToMinutes(schedule.end);
         const totalOpenMinutes = Math.max(0, closeMin - openMin);
 
         // Calculate max sessions per day for ONE "seat" (concurrent slot)
@@ -147,15 +148,15 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
 
         const dayOfWeek = getDay(day);
         const dayStr = formatDate(day);
+        const schedule = config.weeklySchedule[dayOfWeek];
 
         // -- Global Day Checks --
-        if (!config.openDays.includes(dayOfWeek)) continue;
+        if (!schedule) continue;
         if (config.closedDays.includes(dayStr)) continue;
 
         const dayOfWeekStr = DAY_MAP[dayOfWeek] as any;
-        const hours = dayOfWeek === 6 ? config.clinicHours.saturday : config.clinicHours.weekdays;
-        const openMin = timeToMinutes(hours.start);
-        const closeMin = timeToMinutes(hours.end);
+        const openMin = timeToMinutes(schedule.start);
+        const closeMin = timeToMinutes(schedule.end);
 
         // -- Identify Active Students --
         const activeStudents = students.filter(s => {
@@ -200,7 +201,7 @@ export const runSimulation = (config: SimulationConfig): SimulationResult => {
                 const end = start + targetDurationMinutes;
 
                 // 1. Check Class Blocks
-                if (isBlocked(dayOfWeekStr, start, end, group.blockedClassTimes, config.classBufferMinutes)) {
+                if (config.enableClassSchedule && isBlocked(dayOfWeekStr, start, end, group.blockedClassTimes, config.classBufferMinutes)) {
                     continue;
                 }
 

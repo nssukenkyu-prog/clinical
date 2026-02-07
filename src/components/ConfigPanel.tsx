@@ -175,28 +175,7 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onChange }) =>
                         </p>
                     </div>
 
-                    <div className="space-y-4">
-                        <label className="text-xs text-gray-500 block font-bold">開講曜日 (Open Days)</label>
-                        <div className="flex flex-wrap gap-2">
-                            {['日', '月', '火', '水', '木', '金', '土'].map((day, idx) => (
-                                <button
-                                    key={day}
-                                    onClick={() => {
-                                        const newOpen = config.openDays.includes(idx)
-                                            ? config.openDays.filter(d => d !== idx)
-                                            : [...config.openDays, idx].sort();
-                                        handleChange('openDays', newOpen);
-                                    }}
-                                    className={`w-8 h-8 rounded-full text-xs font-bold transition-all ${config.openDays.includes(idx)
-                                            ? 'bg-blue-600 text-white shadow-md'
-                                            : 'bg-gray-100 text-gray-400 dark:bg-gray-800'
-                                        }`}
-                                >
-                                    {day}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
+                    {/* (Old Open Days UI Removed) */}
 
                     <div className="mt-4">
                         <label className="text-xs text-gray-500 block font-bold mb-2">個別休講日設定 (Specific Closed Dates)</label>
@@ -233,7 +212,7 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onChange }) =>
                                                     if (dateStr < config.startDate || dateStr > config.endDate) return <div key={idx}></div>;
 
                                                     const dayOfWeek = new Date(dateStr).getDay();
-                                                    const isBaseOpen = config.openDays.includes(dayOfWeek);
+                                                    const isBaseOpen = !!config.weeklySchedule[dayOfWeek];
                                                     const isExplicitlyClosed = config.closedDays.includes(dateStr);
                                                     const isOpen = isBaseOpen && !isExplicitlyClosed;
 
@@ -249,8 +228,8 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onChange }) =>
                                                             }}
                                                             disabled={!isBaseOpen}
                                                             className={`text-[10px] w-full py-1 rounded ${isOpen
-                                                                    ? 'bg-blue-100 text-blue-700'
-                                                                    : 'bg-gray-100 text-gray-300'
+                                                                ? 'bg-blue-100 text-blue-700'
+                                                                : 'bg-gray-100 text-gray-300'
                                                                 }`}
                                                         >
                                                             {d}

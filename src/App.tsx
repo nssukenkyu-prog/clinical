@@ -11,11 +11,17 @@ const DEFAULT_CONFIG: SimulationConfig = {
   maxConcurrentStudents: 5,
   dailySessionDuration: 5.25, // 5 hours 15 minutes
   classBufferMinutes: 10,
-  clinicHours: {
-    weekdays: { start: "15:15", end: "20:30" }, // Tue-Fri
-    saturday: { start: "10:00", end: "15:15" }  // Sat
+  enableClassSchedule: false, // User requested to optionally disable class constraints
+  // 0:Sun, 1:Mon, 2:Tue...
+  weeklySchedule: {
+    0: null, // Sun: Closed
+    1: null, // Mon: Closed (User request)
+    2: { start: "15:15", end: "20:30" }, // Tue
+    3: { start: "15:15", end: "20:30" }, // Wed
+    4: { start: "15:15", end: "20:30" }, // Thu
+    5: { start: "15:15", end: "20:30" }, // Fri
+    6: { start: "10:00", end: "15:15" }  // Sat
   },
-  openDays: [2, 3, 4, 5, 6], // Tue-Sat (Mon=1 is closed)
   closedDays: [],
   attendanceVariance: false,
   groups: [
